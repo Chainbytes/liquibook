@@ -1,12 +1,60 @@
-
-#include <boost/thread.hpp>
 #include "exchange.h"
 #include "depth_feed_publisher.h"
 #include "depth_feed_connection.h"
 #include "order.h"
 
+#include "quickfix/FileStore.h"
+#include "quickfix/FileLog.h"
+#include "quickfix/SocketAcceptor.h"
+#include "quickfix/Session.h"
+#include "quickfix/SessionSettings.h"
+#include "Application.h"
+#include "quickfix/Exceptions.h"
+#include "config.h"
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
+#include "quickfix/fix42/ExecutionReport.h"
+
+#include "mysql_connection.h"
+#include "mysql_driver.h"
+
+
+#include <cppconn/driver.h>
+#include <cppconn/exception.h>
+#include <cppconn/resultset.h>
+#include <cppconn/statement.h>
+
+
+
+#include "sio_client.cpp"
+#include "sio_client_impl.cpp"
+#include "sio_packet.cpp"
+#include "sio_socket.cpp"
+
+#include "sio_client.h"
+#include "sio_message.h"
+#include "sio_socket.h"
+#include "sio_packet.h"
+
+
+#if __STDC_VERSION__ < 199901L
+#  if __GNUC__ >= 2
+#    define EXAMPLE_FUNCTION __FUNCTION__
+#  else
+#    define EXAMPLE_FUNCTION "(function n/a)"
+#  endif
+#elif defined(_MSC_VER)
+#  if _MSC_VER < 1300
+#    define EXAMPLE_FUNCTION "(function n/a)"
+#  else
+#    define EXAMPLE_FUNCTION __FUNCTION__
+#  endif
+#elif (defined __func__)
+#  define EXAMPLE_FUNCTION __func__
+#else
+#  define EXAMPLE_FUNCTION "(function n/a)"
+#endif
 
 using namespace liquibook;
 
@@ -20,6 +68,7 @@ struct SecurityInfo {
   }
 };
 
+
 typedef std::vector<SecurityInfo> SecurityVector;
 
 void create_securities(SecurityVector& securities);
@@ -28,35 +77,290 @@ void populate_exchange(examples::Exchange& exchange,
 void generate_orders(examples::Exchange& exchange, 
                      const SecurityVector& securities);
 
+
+examples::Exchange exchange1(0, 0);
+SecurityVector securities1;
+sio::client orderStatusSocket;
+
+void OnPlayerSelectCell(int x, int y)
+{
+	std::cout << "Player selected cell: " << x << ", " << y << std::endl;
+}
+
+std::string cancelOrder(std::string symbol, std::string ClOrdID)
+{
+	return exchange1.cancel_order_by_ClOrdID(symbol, ClOrdID);
+}
+
+Application::Order_struct getStatusOrder(std::string symbol, std::string ClOrdID)
+{
+	std::cout << "std::string getStatusOrder";
+	return exchange1.getStatusOrder(symbol, ClOrdID);
+}
+
+
+void sendJSONtoSocket(std::string str)
+{
+	orderStatusSocket.socket()->emit("order_status",str);
+}
+
+
+std::string processOrder(bool is_buy, double price, double qty, std::string symbol, std::string ClOrdID, std::string status)
+{
+	//status нужен, если ордер восстанавливается из бд
+
+	std::cout << "\n\nORDER: " << is_buy << ", " << price << ", " << qty << ", " << symbol <<", " << ClOrdID << std::endl;
+
+
+	
+	std::cout << "__________";
+
+
+	/*SecurityInfo info;
+	info.symbol = symbol;
+	info.
+	*/
+
+	//std::string str;
+	const char * c = symbol.c_str();
+
+	 const SecurityInfo& sec = SecurityInfo (c, double(0));
+
+	bool found = false;
+	for (int i = 0; i < securities1.size(); i++)
+	{
+		// which security
+
+		const SecurityInfo& sec1 = securities1[i];
+
+		if (sec.symbol == sec1.symbol)
+		{
+			found = true;
+			break;
+		}
+	}
+	if (!found)
+	{
+		std::cout << "!Symbol did not found";
+		return "!found";
+	}
+	
+
+	std::cout << "__________";
+
+
+	book::Quantity qty1 = qty;
+
+	// order
+	examples::OrderPtr order(new examples::Order(is_buy, price, qty1, ClOrdID, status));
+
+	order->signalOrderChanged.connect(&sendJSONtoSocket);
+
+	// add order
+	if (exchange1.add_order(sec.symbol, order))
+		return "true";
+	else
+		return "false";
+	
+
+
+	//const SecurityInfo& sec = securities1[1];
+
+//
+	//ищем символ
+	/*
+	// which security
+	size_t index = std::rand() % num_securities;
+	const SecurityInfo& sec = securities[index];
+	// side
+	bool is_buy = (std::rand() % 2) != 0;
+	// price
+	uint32_t price_base = uint32_t(sec.ref_price * 100);
+	uint32_t delta_range = price_base / 50;  // +/- 2% of base
+	int32_t delta = std::rand() % delta_range;
+	delta -= (delta_range / 2);
+	double price = double(price_base + delta) / 100;
+
+	// qty
+	book::Quantity qty = (std::rand() % 10 + 1) * 100;
+
+	// order
+	examples::OrderPtr order(new examples::Order(is_buy, price, qty));
+
+	// add order
+	exchange.add_order(sec.symbol, order);
+
+*/
+}
+
+
 int main(int argc, const char* argv[])
 {
+
   try
   {
+	
     // Feed connection
     examples::DepthFeedConnection connection(argc, argv);
 
     // Open connection in background thread
     connection.accept();
-    boost::function<void ()> acceptor(
+    boost::function<void ()> acceptor1(
         boost::bind(&examples::DepthFeedConnection::run, &connection));
-    boost::thread acceptor_thread(acceptor);
-  
+    boost::thread acceptor_thread(acceptor1);
+
+	//open socket for sending order status==========
+
+	//with htread=========
+	
+	
+	orderStatusSocket.connect("http://127.0.0.1:3005");
+		
+
+  //===================================================================
     // Create feed publisher
     examples::DepthFeedPublisher feed;
     feed.set_connection(&connection);
 
-    // Create exchange
-    examples::Exchange exchange(&feed, &feed);
+	exchange1 = examples::Exchange(&feed, &feed);
+ 
 
     // Create securities
     SecurityVector securities;
     create_securities(securities);
 
+	/////
+
+	securities1.push_back(SecurityInfo("ETH",0));
+	securities1.push_back(SecurityInfo("LTC", 0));
+	securities1.push_back(SecurityInfo("DASH", 0));
+	securities1.push_back(SecurityInfo("DOGE", 0));
+
+	/////
+
     // Populate exchange with securities
-    populate_exchange(exchange, securities);
+    populate_exchange(exchange1, securities1);
   
-    // Generate random orders
-    generate_orders(exchange, securities);
+    //=========== load orders from db=============
+	
+	try {
+
+		sql::mysql::MySQL_Driver *driver;
+		sql::Connection *con;
+		sql::Statement *stmt;
+		sql::ResultSet *res;
+
+		/* Create a connection */
+		driver = sql::mysql::get_driver_instance();
+		con = driver->connect("tcp://worldex.io", "root", "WorldexDB_Exchange@141%%");
+		/* Connect to the MySQL test database */
+		con->setSchema("chainbyte_exchange");
+
+		stmt = con->createStatement();
+		res = stmt->executeQuery("SELECT unique_order_id, coin_code, order_type, market_amount, price, status  FROM `zozocoinex_orders` WHERE status != 'Completed' and status != 'Cancelled' and base_coin_code = 'BTC' and coin_code = 'ETH' ORDER BY order_place_date");
+		while (res->next()) {
+			cout << "\t...Order from DB:\n";
+			bool is_buy=false;
+			double price=0;
+			double qty=0;
+			std::string symbol;
+			std::string clOrdID;
+			std::string status;
+
+			if (res->getString("order_type") == "Buy")
+				is_buy = true;
+
+			clOrdID = res->getString("unique_order_id");
+			symbol = res->getString("coin_code");
+			qty = res->getDouble("market_amount");
+			price = res->getDouble("price");
+			status = res->getString("status");
+
+			/* Access column data by alias or column name */
+			cout << "clOrdID = " << clOrdID << endl;
+			cout << "symbol = " << symbol << endl;
+			cout << "order_type = " << res->getString("order_type") << endl;
+			cout << "quantity = " << qty << endl;
+			cout << "price = " << price << endl;
+			cout << "status = " << status << endl;
+			cout << "_________________________________\n";
+			cout << "Order clOrdID = " << clOrdID << " adding result: " << processOrder(is_buy, price, qty, symbol, clOrdID, status);
+		}
+		delete res;
+		delete stmt;
+		delete con;
+
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << EXAMPLE_FUNCTION << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+
+		
+	}
+
+
+
+	
+	//===========
+
+	std::string file("ordermatch.cfg");
+
+	FIX::SessionSettings settings(file);
+
+	Application application;
+
+	application.SelectCell.connect(&OnPlayerSelectCell);
+
+	application.signalProcessOrder.connect(&processOrder);
+
+	application.signalCancelOrder.connect(&cancelOrder);
+
+	application.signalGetStatusOrder.connect(&getStatusOrder);
+
+	FIX::FileStoreFactory storeFactory(settings);
+	FIX::ScreenLogFactory logFactory(settings);
+	FIX::SocketAcceptor acceptor(application, storeFactory, settings, logFactory);
+	std::cerr << "_________-2_____";
+	acceptor.start();
+	std::cerr << "_________-1_____";
+
+
+//	MyClass *myClass = new MyClass;
+//	application.myClass = myClass;
+//	sig.connect(application);
+//	sig.connect(World());
+
+
+	while (true)
+	{
+		std::string value;
+		std::cin >> value;
+
+		std::cerr << "_________0_____";
+
+		if (value == "#symbols")
+		{
+			application.orderMatcher().display();
+			std::cerr << "_________0_____";
+		}
+		else if (value == "#quit")
+			break;
+		else
+		{
+			application.orderMatcher().display(value);
+			std::cerr << "_________1_____"<< value;
+		}
+
+		std::cout << std::endl;
+	}
+	acceptor.stop();
+	return 0;
+
+
+	//=============
   }
   catch (const std::exception & ex)
   {
@@ -64,15 +368,51 @@ int main(int argc, const char* argv[])
     return -1;
   }
 
+  std::cerr << "##############################################################################################################";
+  std::string file = argv[1];
+   
+  try
+  {
+	  FIX::SessionSettings settings(file);
+
+	  Application application;
+	  FIX::FileStoreFactory storeFactory(settings);
+	  FIX::ScreenLogFactory logFactory(settings);
+	  FIX::SocketAcceptor acceptor(application, storeFactory, settings, logFactory);
+
+	  acceptor.start();
+	  while (true)
+	  {
+		  std::string value;
+		  std::cin >> value;
+
+		  if (value == "#symbols")
+			  application.orderMatcher().display();
+		  else if (value == "#quit")
+			  break;
+		  else
+			  application.orderMatcher().display(value);
+
+		  std::cout << std::endl;
+	  }
+	  acceptor.stop();
+	  return 0;
+  }
+  catch (std::exception & e)
+  {
+	  std::cout << e.what() << std::endl;
+	  return 1;
+  };
+  
   return 0;
 }
 
 void
 create_securities(SecurityVector& securities) {
-  securities.push_back(SecurityInfo("AAPL", 436.36));
-  securities.push_back(SecurityInfo("ADBE", 45.06));
-  securities.push_back(SecurityInfo("ADI", 43.93));
-  securities.push_back(SecurityInfo("ADP", 67.09));
+  securities.push_back(SecurityInfo("ETH", 436.36));
+  securities.push_back(SecurityInfo("LTC", 45.06));
+  securities.push_back(SecurityInfo("DASH", 43.93));
+  securities.push_back(SecurityInfo("DOGE", 67.09));
   securities.push_back(SecurityInfo("ADSK", 38.34));
   securities.push_back(SecurityInfo("AKAM", 43.65));
   securities.push_back(SecurityInfo("ALTR", 31.90));
@@ -181,12 +521,13 @@ populate_exchange(examples::Exchange& exchange, const SecurityVector& securities
 
 void
 generate_orders(examples::Exchange& exchange, const SecurityVector& securities) {
-  time_t now;
+  /*time_t now;
   time(&now);
   std::srand(uint32_t(now));
 
   size_t num_securities = securities.size();
-  while (true) {
+  while (true) 
+  {
     // which security
     size_t index = std::rand() % num_securities;
     const SecurityInfo& sec = securities[index];
@@ -211,4 +552,5 @@ generate_orders(examples::Exchange& exchange, const SecurityVector& securities) 
     // Wait for eyes to read
     sleep(1);
   }
+  */
 }
