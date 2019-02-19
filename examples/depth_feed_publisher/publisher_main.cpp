@@ -24,7 +24,7 @@
 #include <cppconn/exception.h>
 #include <cppconn/resultset.h>
 #include <cppconn/statement.h>
-
+#include <cppconn/prepared_statement.h>
 
 
 #include "sio_client.cpp"
@@ -56,6 +56,9 @@
 #  define EXAMPLE_FUNCTION "(function n/a)"
 #endif
 
+
+
+
 using namespace liquibook;
 
 struct SecurityInfo {
@@ -82,6 +85,44 @@ examples::Exchange exchange1(0, 0);
 SecurityVector securities1;
 sio::client orderStatusSocket;
 
+
+class Flight {
+
+public:
+	
+	Flight(sql::Connection *c =0);
+
+	sql::Connection *con;
+	sql::mysql::MySQL_Driver *driver;
+	sql::Statement *stmt;
+	sql::PreparedStatement *pstmt;
+
+	void updateStatus(std::string);
+
+};
+
+Flight::Flight(sql::Connection *c)
+
+{
+
+	con=c;
+
+};
+
+Flight fl; //db class
+
+void Flight::updateStatus(std::string sql)
+{
+	cout << "Flight: " << sql;
+	stmt = con->createStatement();
+	if (stmt->execute(sql))
+		cout << "sql error";
+	delete stmt;
+}
+
+
+
+
 void OnPlayerSelectCell(int x, int y)
 {
 	std::cout << "Player selected cell: " << x << ", " << y << std::endl;
@@ -99,9 +140,52 @@ Application::Order_struct getStatusOrder(std::string symbol, std::string ClOrdID
 }
 
 
-void sendJSONtoSocket(std::string str)
+void sendJSONtoSocket(std::string ClOrdID_, int32_t quantityOnMarket_, double price_, int status)
 {
-	orderStatusSocket.socket()->emit("order_status",str);
+	//orderStatusSocket.socket()->emit("order_status",str);
+
+	try {
+		
+
+
+		//смотрим статус и в зависимости от этого делаем инсерт или апдейт=========
+		std::string sql;
+		switch (status)
+		{
+		case 1:
+		
+
+			sql = "UPDATE zozocoinex_orders SET status='Processing', market_amount=" + std::to_string(quantityOnMarket_) + "  WHERE unique_order_id=" + ClOrdID_;
+			cout << sql;
+			fl.updateStatus(sql);
+		
+			break;
+		case 2:
+		
+			 sql = "UPDATE zozocoinex_orders SET status='Completed' WHERE unique_order_id=" + ClOrdID_;
+			 cout << sql;
+			 fl.updateStatus(sql);
+		
+			break;
+		case 4:
+			 sql = "UPDATE zozocoinex_orders SET status='Cancelled' WHERE unique_order_id=" + ClOrdID_;
+			 cout << sql;
+			 fl.updateStatus(sql);
+			
+			break;
+
+		}
+
+	}
+	catch (sql::SQLException &e) {
+		cout << "# ERR: SQLException in " << __FILE__;
+		cout << "(" << EXAMPLE_FUNCTION << ") on line " << __LINE__ << endl;
+		cout << "# ERR: " << e.what();
+		cout << " (MySQL error code: " << e.getErrorCode();
+		cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+
+	}
+
 }
 
 
@@ -197,8 +281,21 @@ std::string processOrder(bool is_buy, double price, double qty, std::string symb
 int main(int argc, const char* argv[])
 {
 
+
   try
   {
+	  /* Create a connection */
+
+	  sql::mysql::MySQL_Driver *driver1;
+	  sql::Connection *con1;
+	
+
+	  driver1 = sql::mysql::get_driver_instance();
+	  con1 = driver1->connect("tcp://worldex.chickenkiller.com", "root", "32612^#HJD*^Gi27))863eydh8o");
+	  /* Connect to the MySQL test database */
+	  con1->setSchema("chainbyte_exchange");
+	  fl = Flight(con1);
+	 
 	
     // Feed connection
     examples::DepthFeedConnection connection(argc, argv);
@@ -209,12 +306,10 @@ int main(int argc, const char* argv[])
         boost::bind(&examples::DepthFeedConnection::run, &connection));
     boost::thread acceptor_thread(acceptor1);
 
-	//open socket for sending order status==========
-
-	//with htread=========
 	
 	
-	orderStatusSocket.connect("http://127.0.0.1:3005");
+	
+//	orderStatusSocket.connect("http://127.0.0.1:3005");
 		
 
   //===================================================================
@@ -252,7 +347,7 @@ int main(int argc, const char* argv[])
 
 		/* Create a connection */
 		driver = sql::mysql::get_driver_instance();
-		con = driver->connect("tcp://worldex.io", "root", "WorldexDB_Exchange@141%%");
+		con = driver->connect("tcp://worldex.chickenkiller.com", "root", "32612^#HJD*^Gi27))863eydh8o");
 		/* Connect to the MySQL test database */
 		con->setSchema("chainbyte_exchange");
 

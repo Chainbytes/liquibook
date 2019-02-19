@@ -186,7 +186,7 @@ void Order::sendStatusToSocket()
 		break;
 	}
 	
-	
+	/*
 	StringBuffer s;
 	Writer<StringBuffer> writer(s);
 	writer.StartObject();
@@ -203,10 +203,23 @@ void Order::sendStatusToSocket()
 	writer.String("39");
 	writer.Uint(status);
 
+	/*
+ int32_t quantityOnMarket_
+  double price_;
+  book::Quantity qty_;
+  std::string ClOrdID_;
+  std::string status_;
+  std::vector<StateChange> history_;
+  bool verbose_;
+  */
 
+	//
+	signalOrderChanged(ClOrdID_, quantityOnMarket_, price_, status);
+	/*
 	writer.EndObject();
 	std::string line = s.GetString();
 	signalOrderChanged(line);
+	*/
 }
 
 void

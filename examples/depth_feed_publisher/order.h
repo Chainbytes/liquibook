@@ -46,7 +46,7 @@ public:
 	};
 	typedef std::vector<StateChange> History;
 
-	boost::signals2::signal<void(std::string)> signalOrderChanged; //отправка статуса в сокет когда происходит изменение ордера===
+	boost::signals2::signal<void(std::string, int32_t, double, int)> signalOrderChanged; //отправка статуса в сокет когда происходит изменение ордера===
 
 	Order & verbose(bool verbose = true);
 	bool isVerbose()const;
