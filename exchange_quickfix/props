@@ -1,0 +1,40 @@
+# default settings for sessions
+[DEFAULT]
+ConnectionType=initiator
+FileStorePath=./examples/data
+FileLogPath=./examples/log
+UseDataDictionary=Y
+DataDictionary=/home/liquibook/quickfix/spec/FIX44.xml
+StartTime=00:00:00
+EndTime=00:00:00
+SSLProtocol = +SSLv3 +TLSv1 -SSLv2
+TimestampPrecision=6
+PreserveMessageFieldsOrder=N
+ResetOnLogout=Y
+ResetOnDisconnect=Y
+
+[SESSION]
+
+# inherit ConnectionType, ReconnectInterval and SenderCompID from default
+
+BeginString=FIX.4.4
+TransportDataDictionary=/home/liquibook/quickfix/spec/FIX44.xml
+AppDataDictionary=/home/liquibook/quickfix/spec/FIX44.xml
+#DefaultApplVerID=FIX.4.2
+
+FileStorePath=store
+
+
+SenderCompID=CLIENT1
+
+TargetCompID=ORDERMATCH
+
+SocketConnectHost1=127.0.0.1
+
+SocketConnectPort1=5002
+
+SocketConnectHost2=127.0.0.1
+
+SocketConnectPort2=5003
+
+HeartBtInt=60
